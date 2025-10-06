@@ -12,7 +12,6 @@ pipeline {
     environment {
         DOCKER_REGISTRY = "docker.io"
         DOCKER_CREDENTIALS_ID = "docker-hub-credentials"
-        KUBECONFIG_CREDENTIALS_ID = "kubeconfig-local"
         GIT_CREDENTIALS_ID = "github-pat"
         DOCKER_REPO = "nisha2706/mynode-app"
     }
@@ -95,22 +94,21 @@ pipeline {
         stage('Deploy to Kubernetes') {
             when { expression { params.DEPLOY_TARGET == 'kubernetes' || params.DEPLOY_TARGET == 'both' } }
             steps {
-                withCredentials([file(
-                    credentialsId: "${KUBECONFIG_CREDENTIALS_ID}",
-                    variable: 'KUBECONFIG')]) {
-                    script {
-                        try {
-                            sh """
-                                kubectl apply -f k8s/
-                                kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST} --record
-                                kubectl rollout status deployment/node-app --timeout=2m
-                            """
-                        } catch (Exception e) {
-                            echo "Deployment failed! Rolling back..."
-                            sh "kubectl rollout undo deployment/node-app"
-                            error "Deployment failed and rollback executed"
-                        }
-                    }
+                script {
+                    // Use mounted kubeconfig instead of Jenkins credentials
+                    sh """
+                        export KUBECONFIG=/var/jenkins_home/.kube/config
+                        echo "Using KUBECONFIG=$KUBECONFIG"
+
+                        # Apply manifests
+                        kubectl apply -f k8s/
+
+                        # Update deployment image
+                        kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST} --record
+
+                        # Wait for rollout to complete
+                        kubectl rollout status deployment/node-app --timeout=2m
+                    """
                 }
             }
         }

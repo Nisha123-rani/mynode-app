@@ -1,0 +1,8 @@
+const provider = process.env.DB_PROVIDER || 'memory';
+
+if (provider === 'dynamo') {
+  module.exports = require('./dynamo');
+} else {
+  module.exports = require('./memory');
+}
+

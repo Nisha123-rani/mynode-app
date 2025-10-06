@@ -1,0 +1,28 @@
+const AWS = require('aws-sdk');
+const uuid = require('uuid');
+
+const region = process.env.AWS_REGION || 'us-east-1';
+const table = process.env.DYNAMO_TABLE || 'todos';
+
+AWS.config.update({ region });
+
+const doc = new AWS.DynamoDB.DocumentClient();
+
+module.exports = {
+  async listTodos() {
+    const params = { TableName: table };
+    const res = await doc.scan(params).promise();
+    return res.Items || [];
+  },
+
+  async createTodo(item) {
+    if (!item.id) item.id = uuid.v4();
+    const params = {
+      TableName: table,
+      Item: item
+    };
+    await doc.put(params).promise();
+    return item;
+  }
+};
+

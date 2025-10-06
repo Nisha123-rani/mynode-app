@@ -1,0 +1,17 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log
+
+# Docker
+*.tar
+*.log
+
+# Jenkins workspace (optional)
+.jenkins/
+jenkins_home/
+
+# OS files
+.DS_Store
+*.swp
+node_modules/
+node_modules/

@@ -13,18 +13,15 @@ app.use(helmet());
 app.use(express.json());
 app.use(metrics.middleware);
 
-// Read commit from environment
-const GIT_SHA = process.env.GIT_SHA || 'unknown';
-const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
-
-console.log(`🔹 Service starting with GIT_SHA=${GIT_SHA} at ${BUILD_TIME}`);
+// Log startup info (optional, will show build-time values if any)
+console.log(`🔹 Service starting with GIT_SHA=${process.env.GIT_SHA || 'unknown'} at ${process.env.BUILD_TIME || new Date().toISOString()}`);
 
 // === Health endpoint ===
 app.get('/healthz', async (req, res) => {
   res.json({
     status: 'ok',
-    commit: GIT_SHA,
-    buildTime: BUILD_TIME,
+    commit: process.env.GIT_SHA || 'unknown',        // Read dynamically
+    buildTime: process.env.BUILD_TIME || new Date().toISOString(), // Read dynamically
   });
 });
 

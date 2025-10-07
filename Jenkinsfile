@@ -14,8 +14,6 @@ pipeline {
         DOCKER_CREDENTIALS_ID = "docker-hub-credentials"
         GIT_CREDENTIALS_ID = "github-pat"
         DOCKER_REPO = "nisha2706/mynode-app"
-
-        // Ensure kubectl always knows where to look
         KUBECONFIG = "/var/jenkins_home/.kube/config"
     }
 
@@ -25,13 +23,15 @@ pipeline {
             steps { checkout scm }
         }
 
-        stage('Set GIT SHA') {
+        stage('Set GIT SHA & Build Time') {
             steps {
                 script {
                     env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.BUILD_TIME = sh(script: 'date -u +"%Y-%m-%dT%H:%M:%SZ"', returnStdout: true).trim()
                     env.DOCKER_IMAGE_SHA = "${DOCKER_REPO}:${env.GIT_SHA}"
                     env.DOCKER_IMAGE_LATEST = "${DOCKER_REPO}:latest"
                     echo "GIT_SHA=${env.GIT_SHA}"
+                    echo "BUILD_TIME=${env.BUILD_TIME}"
                     echo "DOCKER_IMAGE_SHA=${env.DOCKER_IMAGE_SHA}"
                     echo "DOCKER_IMAGE_LATEST=${env.DOCKER_IMAGE_LATEST}"
                 }
@@ -47,13 +47,13 @@ pipeline {
 
         stage('Install, Patch & Test') {
             steps {
-                script {
-                    sh 'npm ci'
-                    sh 'npm install cross-spawn@7.0.5 || true'
-                    sh 'npm test'
-                    sh 'npx eslint src/**/*.js --max-warnings=0'
-                    sh 'npm audit --audit-level=high'
-                }
+                sh '''
+                    npm ci
+                    npm install cross-spawn@7.0.5 || true
+                    npm test
+                    npx eslint src/**/*.js --max-warnings=0
+                    npm audit --audit-level=high
+                '''
             }
         }
 
@@ -62,8 +62,12 @@ pipeline {
                 sh """
                     docker build \
                         --build-arg GIT_SHA=${GIT_SHA} \
-                        -t ${DOCKER_IMAGE_SHA} .
-                    docker tag ${DOCKER_IMAGE_SHA} ${DOCKER_IMAGE_LATEST}
+                        --build-arg BUILD_TIME=${BUILD_TIME} \
+                        -t ${DOCKER_IMAGE_SHA} \
+                        -t ${DOCKER_IMAGE_LATEST} .
+                    echo "=== Docker image built with GIT_SHA and BUILD_TIME ==="
+                    docker inspect -f '{{ index .Config.Labels "GIT_SHA" }}' ${DOCKER_IMAGE_SHA} || true
+                    docker inspect -f '{{ index .Config.Labels "BUILD_TIME" }}' ${DOCKER_IMAGE_SHA} || true
                 """
             }
         }
@@ -87,14 +91,16 @@ pipeline {
                         docker push ${DOCKER_IMAGE_SHA}
                         docker push ${DOCKER_IMAGE_LATEST}
 
-                        # Stop any running container
                         docker rm -f node-app || true
 
-                        # Run container locally with GIT_SHA env
                         docker run -d --name node-app -p 3000:3000 \
                             -e GIT_SHA=${GIT_SHA} \
+                            -e BUILD_TIME=${BUILD_TIME} \
                             ${DOCKER_IMAGE_LATEST}
                     """
+                    echo "Verifying running container env..."
+                    sh "docker exec node-app printenv | grep GIT_SHA || true"
+                    sh "docker exec node-app printenv | grep BUILD_TIME || true"
                 }
             }
         }
@@ -108,11 +114,14 @@ pipeline {
                     # Apply manifests
                     kubectl apply -f k8s/
 
-                    # Update deployment image and inject GIT_SHA env
+                    # Update deployment image
                     kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
-                    kubectl set env deployment/node-app GIT_SHA=${GIT_SHA}
 
-                    # Wait for rollout
+                    # Inject GIT_SHA & BUILD_TIME
+                    kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
+
+                    # Restart pods to pick up new env
+                    kubectl rollout restart deployment/node-app
                     kubectl rollout status deployment/node-app --timeout=2m
                 """
             }

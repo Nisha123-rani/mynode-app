@@ -13,6 +13,9 @@ spec:
     metadata:
       labels:
         app: node-app
+      annotations:
+        # Jenkins will dynamically update this annotation with the current GIT SHA
+        build.jenkins.io/git-sha: "unknown"
     spec:
       containers:
         - name: node-app
@@ -23,8 +26,12 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
+            - name: PORT
+              value: "3000"
             - name: GIT_SHA
-              value: ""   # Jenkins will inject actual SHA dynamically
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['build.jenkins.io/git-sha']
           readinessProbe:
             httpGet:
               path: /healthz
@@ -54,4 +61,5 @@ spec:
     - protocol: TCP
       port: 3000
       targetPort: 3000
+      nodePort: 30080
 

@@ -7,19 +7,31 @@ import * as metrics from './metrics.js';
 
 const app = express();
 
+// === Observability setup ===
 app.use(pinoHttp({ logger: pino() }));
 app.use(helmet());
 app.use(express.json());
 app.use(metrics.middleware);
 
-// /healthz endpoint now returns GIT_SHA
+// Read commit from environment
+const GIT_SHA = process.env.GIT_SHA || 'unknown';
+const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
+
+console.log(`🔹 Service starting with GIT_SHA=${GIT_SHA} at ${BUILD_TIME}`);
+
+// === Health endpoint ===
 app.get('/healthz', async (req, res) => {
-  const commit = process.env.GIT_SHA || 'unknown';
-  res.json({ status: 'ok', commit });
+  res.json({
+    status: 'ok',
+    commit: GIT_SHA,
+    buildTime: BUILD_TIME,
+  });
 });
 
+// === API routes ===
 app.use('/api/v1', routes);
 
+// === Metrics endpoint ===
 app.get('/metrics', async (req, res) => {
   try {
     res.set('Content-Type', metrics.register.contentType);

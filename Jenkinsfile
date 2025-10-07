@@ -15,7 +15,7 @@ pipeline {
         GIT_CREDENTIALS_ID = "github-pat"
         DOCKER_REPO = "nisha2706/mynode-app"
 
-        // 👇 This ensures kubectl always knows where to look
+        // Ensure kubectl always knows where to look
         KUBECONFIG = "/var/jenkins_home/.kube/config"
     }
 
@@ -93,13 +93,8 @@ pipeline {
                 sh """
                     echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                    # Apply manifests
                     kubectl apply -f k8s/
-
-                    # Update image in deployment
                     kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST} --record
-
-                    # Wait for rollout
                     kubectl rollout status deployment/node-app --timeout=2m
                 """
             }
@@ -116,6 +111,10 @@ pipeline {
                         git config user.name "Jenkins CI"
                         git config user.email "jenkins@example.com"
                         git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/Nisha123-rani/mynode-app.git
+
+                        # Fix detached HEAD by creating or resetting main branch
+                        git checkout -B main
+
                         git add .
                         git commit -m "CI: update from Jenkins build ${GIT_SHA}" || echo "No changes to commit"
                         git push origin main
@@ -123,6 +122,7 @@ pipeline {
                 }
             }
         }
+
     }
 
     post {

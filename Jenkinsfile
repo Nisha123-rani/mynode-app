@@ -59,8 +59,12 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${DOCKER_IMAGE_SHA} ."
-                sh "docker tag ${DOCKER_IMAGE_SHA} ${DOCKER_IMAGE_LATEST}"
+                sh """
+                    docker build \
+                        --build-arg GIT_SHA=${GIT_SHA} \
+                        -t ${DOCKER_IMAGE_SHA} .
+                    docker tag ${DOCKER_IMAGE_SHA} ${DOCKER_IMAGE_LATEST}
+                """
             }
         }
 
@@ -70,7 +74,7 @@ pipeline {
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Push & Run Docker Image') {
             when { expression { params.DEPLOY_TARGET == 'docker' || params.DEPLOY_TARGET == 'both' } }
             steps {
                 withCredentials([usernamePassword(
@@ -82,6 +86,14 @@ pipeline {
                         echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
                         docker push ${DOCKER_IMAGE_SHA}
                         docker push ${DOCKER_IMAGE_LATEST}
+
+                        # Stop any running container
+                        docker rm -f node-app || true
+
+                        # Run container locally with GIT_SHA env
+                        docker run -d --name node-app -p 3000:3000 \
+                            -e GIT_SHA=${GIT_SHA} \
+                            ${DOCKER_IMAGE_LATEST}
                     """
                 }
             }
@@ -93,8 +105,14 @@ pipeline {
                 sh """
                     echo "Using KUBECONFIG=${KUBECONFIG}"
 
+                    # Apply manifests
                     kubectl apply -f k8s/
-                    kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST} --record
+
+                    # Update deployment image and inject GIT_SHA env
+                    kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
+                    kubectl set env deployment/node-app GIT_SHA=${GIT_SHA}
+
+                    # Wait for rollout
                     kubectl rollout status deployment/node-app --timeout=2m
                 """
             }
@@ -111,10 +129,7 @@ pipeline {
                         git config user.name "Jenkins CI"
                         git config user.email "jenkins@example.com"
                         git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/Nisha123-rani/mynode-app.git
-
-                        # Fix detached HEAD by creating or resetting main branch
                         git checkout -B main
-
                         git add .
                         git commit -m "CI: update from Jenkins build ${GIT_SHA}" || echo "No changes to commit"
                         git push origin main
@@ -122,7 +137,6 @@ pipeline {
                 }
             }
         }
-
     }
 
     post {

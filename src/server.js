@@ -5,7 +5,6 @@ import pino from 'pino';
 import routes from './routes/index.js';
 import * as metrics from './metrics.js';
 
-
 const app = express();
 
 app.use(pinoHttp({ logger: pino() }));
@@ -13,8 +12,9 @@ app.use(helmet());
 app.use(express.json());
 app.use(metrics.middleware);
 
+// /healthz endpoint now returns GIT_SHA
 app.get('/healthz', async (req, res) => {
-  const commit = process.env.COMMIT_SHA || null;
+  const commit = process.env.GIT_SHA || 'unknown';
   res.json({ status: 'ok', commit });
 });
 

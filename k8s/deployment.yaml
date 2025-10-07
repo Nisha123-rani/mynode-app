@@ -23,6 +23,8 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
+            - name: GIT_SHA
+              value: ""   # Jenkins will inject actual SHA dynamically
           readinessProbe:
             httpGet:
               path: /healthz
@@ -52,5 +54,4 @@ spec:
     - protocol: TCP
       port: 3000
       targetPort: 3000
-      nodePort: 30080  # Access via http://<VM-IP>:30080
 

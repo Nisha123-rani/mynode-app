@@ -111,14 +111,13 @@ pipeline {
                 sh """
                     echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                    # Apply manifests
-                    kubectl apply -f k8s/
-
                     # Update deployment image
                     kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                    # Inject GIT_SHA & BUILD_TIME
-                    kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
+                    # Directly set env vars (avoid invalid valueFrom)
+                    kubectl set env deployment/node-app \
+                        GIT_SHA=${GIT_SHA} \
+                        BUILD_TIME=${BUILD_TIME}
 
                     # Restart pods to pick up new env
                     kubectl rollout restart deployment/node-app

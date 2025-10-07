@@ -5,7 +5,7 @@ metadata:
   labels:
     app: node-app
 spec:
-  replicas: 2  # Run 2 pods
+  replicas: 2
   selector:
     matchLabels:
       app: node-app
@@ -13,9 +13,6 @@ spec:
     metadata:
       labels:
         app: node-app
-      annotations:
-        # Jenkins will dynamically update this annotation with the current GIT SHA
-        build.jenkins.io/git-sha: "unknown"
     spec:
       containers:
         - name: node-app
@@ -29,9 +26,9 @@ spec:
             - name: PORT
               value: "3000"
             - name: GIT_SHA
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['build.jenkins.io/git-sha']
+              value: ""       # Jenkins will override this dynamically
+            - name: BUILD_TIME
+              value: ""       # Jenkins will override this dynamically
           readinessProbe:
             httpGet:
               path: /healthz

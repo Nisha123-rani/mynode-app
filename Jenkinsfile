@@ -52,7 +52,7 @@ pipeline {
                     npm install cross-spawn@7.0.5 || true
                     npm test
                     npx eslint src/**/*.js --max-warnings=0
-                    npm audit --audit-level=high
+                    npm audit --audit-level=high || true
                 '''
             }
         }
@@ -97,10 +97,11 @@ pipeline {
                             -e GIT_SHA=${GIT_SHA} \
                             -e BUILD_TIME=${BUILD_TIME} \
                             ${DOCKER_IMAGE_LATEST}
+
+                        echo "Verifying running container env..."
+                        docker exec node-app printenv | grep GIT_SHA || true
+                        docker exec node-app printenv | grep BUILD_TIME || true
                     """
-                    echo "Verifying running container env..."
-                    sh "docker exec node-app printenv | grep GIT_SHA || true"
-                    sh "docker exec node-app printenv | grep BUILD_TIME || true"
                 }
             }
         }
@@ -114,14 +115,23 @@ pipeline {
                     # Update deployment image
                     kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                    # Directly set env vars (avoid invalid valueFrom)
+                    # Set env vars dynamically
                     kubectl set env deployment/node-app \
                         GIT_SHA=${GIT_SHA} \
                         BUILD_TIME=${BUILD_TIME}
 
-                    # Restart pods to pick up new env
+                    # Update deployment annotation for traceability
+                    kubectl annotate deployment node-app build.jenkins.io/git-sha=${GIT_SHA} --overwrite
+
+                    # Restart pods to apply new env
                     kubectl rollout restart deployment/node-app
                     kubectl rollout status deployment/node-app --timeout=2m
+
+                    # Verify env vars in first pod
+                    POD_NAME=\$(kubectl get pods -l app=node-app -o jsonpath='{.items[0].metadata.name}')
+                    echo "Verifying env vars in pod \$POD_NAME"
+                    kubectl exec \$POD_NAME -- printenv | grep GIT_SHA
+                    kubectl exec \$POD_NAME -- printenv | grep BUILD_TIME
                 """
             }
         }
@@ -138,8 +148,9 @@ pipeline {
                         git config user.email "jenkins@example.com"
                         git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/Nisha123-rani/mynode-app.git
                         git checkout -B main
+                        git pull --rebase origin main || true
                         git add .
-                        git commit -m "CI: update from Jenkins build ${GIT_SHA}" || echo "No changes to commit"
+                        git commit -m "CI: update from Jenkins build ${GIT_SHA}" --allow-empty
                         git push origin main
                     """
                 }

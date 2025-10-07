@@ -26,9 +26,9 @@ spec:
             - name: PORT
               value: "3000"
             - name: GIT_SHA
-              value: "placeholder"       # Jenkins will override this dynamically
+              value: "placeholder"       # Jenkins will overwrite this
             - name: BUILD_TIME
-              value: "placeholder"       # Jenkins will override this dynamically
+              value: "placeholder"       # Jenkins will overwrite this
           readinessProbe:
             httpGet:
               path: /healthz

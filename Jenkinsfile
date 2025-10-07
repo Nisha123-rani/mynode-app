@@ -14,6 +14,9 @@ pipeline {
         DOCKER_CREDENTIALS_ID = "docker-hub-credentials"
         GIT_CREDENTIALS_ID = "github-pat"
         DOCKER_REPO = "nisha2706/mynode-app"
+
+        // 👇 This ensures kubectl always knows where to look
+        KUBECONFIG = "/var/jenkins_home/.kube/config"
     }
 
     stages {
@@ -45,17 +48,10 @@ pipeline {
         stage('Install, Patch & Test') {
             steps {
                 script {
-                    // Clean install
                     sh 'npm ci'
-
-                    // Patch known HIGH CVEs (e.g., cross-spawn)
                     sh 'npm install cross-spawn@7.0.5 || true'
-
-                    // Run unit tests and static analysis
                     sh 'npm test'
                     sh 'npx eslint src/**/*.js --max-warnings=0'
-
-                    // npm audit for remaining HIGH/CRITICAL issues
                     sh 'npm audit --audit-level=high'
                 }
             }
@@ -70,7 +66,6 @@ pipeline {
 
         stage('Scan Docker Image') {
             steps {
-                // Fail on HIGH/CRITICAL, ignore LOW/MEDIUM
                 sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE_SHA} || true"
             }
         }
@@ -81,12 +76,13 @@ pipeline {
                 withCredentials([usernamePassword(
                     credentialsId: "${DOCKER_CREDENTIALS_ID}",
                     usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
-                            docker push ${DOCKER_IMAGE_SHA}
-                            docker push ${DOCKER_IMAGE_LATEST}
-                        """
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
+                        docker push ${DOCKER_IMAGE_SHA}
+                        docker push ${DOCKER_IMAGE_LATEST}
+                    """
                 }
             }
         }
@@ -94,22 +90,18 @@ pipeline {
         stage('Deploy to Kubernetes') {
             when { expression { params.DEPLOY_TARGET == 'kubernetes' || params.DEPLOY_TARGET == 'both' } }
             steps {
-                script {
-                    // Use mounted kubeconfig instead of Jenkins credentials
-                    sh """
-                        export KUBECONFIG=/var/jenkins_home/.kube/config
-                        echo "Using KUBECONFIG=$KUBECONFIG"
+                sh """
+                    echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                        # Apply manifests
-                        kubectl apply -f k8s/
+                    # Apply manifests
+                    kubectl apply -f k8s/
 
-                        # Update deployment image
-                        kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST} --record
+                    # Update image in deployment
+                    kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST} --record
 
-                        # Wait for rollout to complete
-                        kubectl rollout status deployment/node-app --timeout=2m
-                    """
-                }
+                    # Wait for rollout
+                    kubectl rollout status deployment/node-app --timeout=2m
+                """
             }
         }
 
@@ -131,7 +123,6 @@ pipeline {
                 }
             }
         }
-
     }
 
     post {

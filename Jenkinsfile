@@ -128,8 +128,6 @@ pipeline {
 
                             # Restart pods to pick up new env vars
                             kubectl rollout restart deployment/node-app
-
-                            # Wait for rollout and check status
                             kubectl rollout status deployment/node-app --timeout=2m
                         """
                     } catch (Exception e) {
@@ -142,12 +140,14 @@ pipeline {
                         error "Kubernetes deployment failed and rollback executed."
                     }
 
-                    // Verify env vars in first pod (after successful rollout)
+                    // Verify env vars and health in all pods
                     sh """
-                        POD_NAME=\$(kubectl get pods -l app=node-app -o jsonpath='{.items[0].metadata.name}')
-                        echo "Verifying env vars in pod \$POD_NAME"
-                        kubectl exec \$POD_NAME -- printenv | grep GIT_SHA
-                        kubectl exec \$POD_NAME -- printenv | grep BUILD_TIME
+                        for POD in \$(kubectl get pods -l app=node-app -o jsonpath='{.items[*].metadata.name}'); do
+                            echo "Checking pod: \$POD"
+                            kubectl exec \$POD -- printenv | grep GIT_SHA
+                            kubectl exec \$POD -- printenv | grep BUILD_TIME
+                            kubectl exec \$POD -- wget -qO- http://localhost:3000/healthz
+                        done
                     """
                 }
             }
@@ -168,17 +168,17 @@ pipeline {
                         # Ensure we're on main branch
                         git checkout -B main
 
-                        # Fetch remote changes and rebase to avoid conflicts
+                        # Fetch remote changes and rebase safely
                         git fetch origin main
                         git rebase origin/main || true
 
                         # Stage changes
                         git add .
 
-                        # Commit (allow empty commits)
+                        # Commit (allow empty)
                         git commit -m "CI: update from Jenkins build ${GIT_SHA}" --allow-empty
 
-                        # Push safely
+                        # Push
                         git push origin main
                     """
                 }

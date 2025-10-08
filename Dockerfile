@@ -1,59 +1,64 @@
 # ==========================
+# Stage 1: Base
+# ==========================
+FROM node:20-alpine AS base
+
+WORKDIR /app
+
+COPY package*.json ./
+
+# Install dependencies for testing and production
+RUN npm ci
+
+COPY . .
+
+# ==========================
+# Stage 2: Test (optional)
+# ==========================
+FROM base AS test
+
+# Run tests
+RUN NODE_OPTIONS=--experimental-vm-modules npm test
+
+# ==========================
 # Stage 3: Production
 # ==========================
 FROM node:20-alpine AS prod
 
 WORKDIR /app
 
-# Copy only dependency manifests and install production deps
+# Copy only production dependencies
 COPY package*.json ./
 RUN npm ci --only=production
 
-# --------------------------
-# Install curl, wget, bash
-# --------------------------
-# Install as root (default) so binaries are accessible to non-root
-RUN apk add --no-cache curl wget bash
-
-# Copy source code
+# Copy app source
 COPY src ./src
 
-# --------------------------
-# Build-time metadata
-# --------------------------
-ARG GIT_SHA
-ARG BUILD_TIME
+# Install curl, wget, bash for healthchecks
+RUN apk add --no-cache curl wget bash
 
-# Labels
-LABEL maintainer="nisha"
-LABEL git_commit="${GIT_SHA}"
-LABEL build_time="${BUILD_TIME}"
-
-# Environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV GIT_SHA=${GIT_SHA}
-ENV BUILD_TIME=${BUILD_TIME}
-# Ensure PATH includes standard binaries
-ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-
-# --------------------------
-# Create non-root user with writable home
-# --------------------------
+# Add non-root user with writable home
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
     && mkdir -p /home/appuser \
     && chown -R appuser:appgroup /home/appuser /app
 
-# Switch to non-root user
 USER appuser
 
-# --------------------------
-# Healthcheck using curl
-# --------------------------
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fsS http://localhost:3000/healthz || exit 1
+# Build-time metadata (from Jenkins)
+ARG GIT_SHA
+ARG BUILD_TIME
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIME=${BUILD_TIME}
 
-# Expose port and start app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD /usr/bin/curl -fsS http://localhost:3000/healthz || exit 1
+
 EXPOSE 3000
+
 CMD ["node", "src/index.js"]
 

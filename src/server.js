@@ -6,22 +6,29 @@ import routes from './routes/index.js';
 import * as metrics from './metrics.js';
 
 const app = express();
+const logger = pino();
 
 // === Observability setup ===
-app.use(pinoHttp({ logger: pino() }));
+app.use(pinoHttp({ logger }));
 app.use(helmet());
 app.use(express.json());
 app.use(metrics.middleware);
 
-// Log startup info (optional, will show build-time values if any)
-console.log(`🔹 Service starting with GIT_SHA=${process.env.GIT_SHA || 'unknown'} at ${process.env.BUILD_TIME || new Date().toISOString()}`);
+// Log startup info (includes build metadata)
+const gitSha = process.env.GIT_SHA || 'unknown';
+const buildTime = process.env.BUILD_TIME || new Date().toISOString();
+logger.info(`🔹 Service starting with GIT_SHA=${gitSha}, BUILD_TIME=${buildTime}`);
 
 // === Health endpoint ===
-app.get('/healthz', async (req, res) => {
+app.get('/healthz', (req, res) => {
+  // Read fresh values directly from env each time
+  const currentGitSha = process.env.GIT_SHA || 'unknown';
+  const currentBuildTime = process.env.BUILD_TIME || 'unknown';
+
   res.json({
     status: 'ok',
-    commit: process.env.GIT_SHA || 'unknown',        // Read dynamically
-    buildTime: process.env.BUILD_TIME || new Date().toISOString(), // Read dynamically
+    commit: currentGitSha,
+    buildTime: currentBuildTime,
   });
 });
 
@@ -34,7 +41,7 @@ app.get('/metrics', async (req, res) => {
     res.set('Content-Type', metrics.register.contentType);
     res.end(await metrics.register.metrics());
   } catch (err) {
-    console.error('Failed to get metrics', err);
+    logger.error('❌ Failed to get metrics', err);
     res.status(500).end();
   }
 });

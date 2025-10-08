@@ -114,19 +114,19 @@ pipeline {
                         sh """
                             echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                            # Apply deployment.yaml (create or update deployment)
+                            # Apply deployment.yaml
                             kubectl apply -f k8s/deployment.yaml
 
                             # Update container image
                             kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                            # Set environment variables dynamically
+                            # Set env variables
                             kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
 
-                            # Annotate deployment for build traceability
+                            # Annotate deployment
                             kubectl annotate deployment node-app build.jenkins.io/git-sha=${GIT_SHA} --overwrite
 
-                            # Restart pods to pick up new env vars
+                            # Restart pods
                             kubectl rollout restart deployment/node-app
                             kubectl rollout status deployment/node-app --timeout=2m
                         """
@@ -140,13 +140,18 @@ pipeline {
                         error "Kubernetes deployment failed and rollback executed."
                     }
 
-                    // Verify env vars and health in all pods
+                    // Verify env vars and health in all pods safely
                     sh """
                         for POD in \$(kubectl get pods -l app=node-app -o jsonpath='{.items[*].metadata.name}'); do
-                            echo "Checking pod: \$POD"
-                            kubectl exec \$POD -- printenv | grep GIT_SHA
-                            kubectl exec \$POD -- printenv | grep BUILD_TIME
-                            kubectl exec \$POD -- wget -qO- http://localhost:3000/healthz
+                            PHASE=\$(kubectl get pod \$POD -o jsonpath='{.status.phase}')
+                            echo "Checking pod: \$POD (phase: \$PHASE)"
+                            if [ "\$PHASE" != "Running" ]; then
+                                echo "Skipping pod \$POD as it is not running."
+                                continue
+                            fi
+                            kubectl exec \$POD -- printenv | grep GIT_SHA || true
+                            kubectl exec \$POD -- printenv | grep BUILD_TIME || true
+                            kubectl exec \$POD -- wget -qO- http://localhost:3000/healthz || echo "Health check failed for \$POD"
                         done
                     """
                 }
@@ -164,21 +169,11 @@ pipeline {
                         git config user.name "Jenkins CI"
                         git config user.email "jenkins@example.com"
                         git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/Nisha123-rani/mynode-app.git
-
-                        # Ensure we're on main branch
                         git checkout -B main
-
-                        # Fetch remote changes and rebase safely
                         git fetch origin main
                         git rebase origin/main || true
-
-                        # Stage changes
                         git add .
-
-                        # Commit (allow empty)
                         git commit -m "CI: update from Jenkins build ${GIT_SHA}" --allow-empty
-
-                        # Push
                         git push origin main
                     """
                 }

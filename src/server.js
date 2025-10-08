@@ -8,8 +8,12 @@ import * as metrics from './metrics.js';
 const app = express();
 const logger = pino();
 
-// === Log startup info (initial env values) ===
-logger.info(`🚀 Starting service with GIT_SHA=${process.env.GIT_SHA || 'unknown'}, BUILD_TIME=${process.env.BUILD_TIME || new Date().toISOString()}`);
+// === Read environment variables at runtime ===
+const GIT_SHA = process.env.GIT_SHA || 'unknown';
+const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
+
+// === Log startup info (structured log) ===
+logger.info({ git_sha: GIT_SHA, build_time: BUILD_TIME }, '🚀 Starting service');
 
 // === Middleware ===
 app.use(pinoHttp({ logger }));
@@ -19,13 +23,19 @@ app.use(metrics.middleware);
 
 // === Health endpoint (reads env dynamically) ===
 app.get('/healthz', (req, res) => {
-  const GIT_SHA = process.env.GIT_SHA || 'unknown';
-  const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
-
   res.json({
     status: 'ok',
-    commit: GIT_SHA,
-    buildTime: BUILD_TIME
+    commit: process.env.GIT_SHA || 'unknown',
+    buildTime: process.env.BUILD_TIME || new Date().toISOString()
+  });
+});
+
+// === Optional Version endpoint ===
+app.get('/version', (req, res) => {
+  res.json({
+    git_sha: process.env.GIT_SHA || 'unknown',
+    build_time: process.env.BUILD_TIME || new Date().toISOString(),
+    service: 'mynode-app'
   });
 });
 

@@ -9,8 +9,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-# Install curl for healthchecks and in-container verification
-RUN apk add --no-cache curl
+# Install curl and wget for healthchecks and in-container verification
+RUN apk add --no-cache curl wget
 
 # Copy source code
 COPY src ./src

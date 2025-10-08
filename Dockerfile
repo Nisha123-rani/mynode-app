@@ -1,26 +1,4 @@
 # ==========================
-# Stage 1: Base dependencies
-# ==========================
-FROM node:20-alpine AS base
-
-WORKDIR /app
-
-COPY package*.json ./
-
-# Install all dependencies for tests + production
-RUN npm ci
-
-COPY . .
-
-# ==========================
-# Stage 2: Test (optional)
-# ==========================
-FROM base AS test
-
-# Run unit tests (won’t execute unless explicitly used)
-RUN NODE_OPTIONS=--experimental-vm-modules npm test
-
-# ==========================
 # Stage 3: Production
 # ==========================
 FROM node:20-alpine AS prod
@@ -30,6 +8,9 @@ WORKDIR /app
 # Copy only dependency manifests and install production deps
 COPY package*.json ./
 RUN npm ci --only=production
+
+# Install curl for healthchecks and in-container verification
+RUN apk add --no-cache curl
 
 # Copy source code
 COPY src ./src
@@ -62,10 +43,10 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 # --------------------------
-# Healthcheck
+# Healthcheck using curl
 # --------------------------
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/healthz || exit 1
+  CMD curl -fsS http://localhost:3000/healthz || exit 1
 
 # --------------------------
 # Expose port and start app

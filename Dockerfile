@@ -9,8 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-# Install curl and wget for healthchecks and in-container verification
-# Add bash since some commands may require it
+# Install curl, wget, and bash for healthchecks and debugging
 RUN apk add --no-cache curl wget bash
 
 # Copy source code
@@ -36,22 +35,20 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
+# Ensure PATH includes standard binaries for non-root user
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 # --------------------------
-# Security: Non-root user with writable home
+# Security: Non-root user
 # --------------------------
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
-    && mkdir -p /home/appuser \
-    && chown -R appuser:appgroup /home/appuser /app
-
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 # --------------------------
 # Healthcheck using curl
 # --------------------------
-# Use --retry and --connect-timeout to make healthchecks more reliable
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl --retry 3 --connect-timeout 5 -fsS http://localhost:3000/healthz || exit 1
+  CMD curl -fsS http://localhost:3000/healthz || exit 1
 
 # --------------------------
 # Expose port and start app

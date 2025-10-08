@@ -103,5 +103,74 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
-            when { expression { params.DEPLOY_TARGET == 'ku_
+            when { expression { params.DEPLOY_TARGET == 'kubernetes' || params.DEPLOY_TARGET == 'both' } }
+            steps {
+                script {
+                    try {
+                        sh """
+                            echo "Using KUBECONFIG=${KUBECONFIG}"
+
+                            # Apply deployment
+                            kubectl apply -f k8s/deployment.yaml
+
+                            # Update image and environment variables
+                            kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
+                            kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
+
+                            # Annotate to force pod restart
+                            kubectl patch deployment node-app -p '{"spec": {"template": {"metadata": {"annotations": {"build.jenkins.io/force-redeploy": "'\$(date +%s)'"}}}}}'
+
+                            # Wait for rollout
+                            kubectl rollout status deployment/node-app --timeout=2m
+
+                            echo "Deployment successful!"
+                        """
+                    } catch (Exception e) {
+                        echo "Deployment failed! Rolling back..."
+                        sh """
+                            kubectl rollout undo deployment/node-app
+                            kubectl get pods -l app=node-app
+                        """
+                        error "Kubernetes deployment failed and rollback executed."
+                    }
+                }
+            }
+        }
+
+        stage('Push to GitHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${GIT_CREDENTIALS_ID}",
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
+                    sh """
+                        git config user.name "Jenkins CI"
+                        git config user.email "jenkins@example.com"
+                        git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/Nisha123-rani/mynode-app.git
+                        git checkout -B main
+                        git fetch origin main
+                        git rebase origin/main || true
+                        git add .
+                        git commit -m "CI: update from Jenkins build ${GIT_SHA}" --allow-empty
+                        git push origin main
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Cleaning up Docker images"
+            sh "docker rmi ${DOCKER_IMAGE_SHA} ${DOCKER_IMAGE_LATEST} || true"
+        }
+        failure {
+            echo "Build failed! Check console output for errors."
+        }
+        success {
+            echo "Pipeline completed successfully!"
+        }
+    }
+}
 

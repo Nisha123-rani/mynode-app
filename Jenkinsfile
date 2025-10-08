@@ -109,31 +109,47 @@ pipeline {
         stage('Deploy to Kubernetes') {
             when { expression { params.DEPLOY_TARGET == 'kubernetes' || params.DEPLOY_TARGET == 'both' } }
             steps {
-                sh """
-                    echo "Using KUBECONFIG=${KUBECONFIG}"
+                script {
+                    try {
+                        sh """
+                            echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                    # Apply deployment.yaml (create or update deployment)
-                    kubectl apply -f k8s/deployment.yaml
+                            # Apply deployment.yaml (create or update deployment)
+                            kubectl apply -f k8s/deployment.yaml
 
-                    # Update container image
-                    kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
+                            # Update container image
+                            kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                    # Set environment variables dynamically
-                    kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
+                            # Set environment variables dynamically
+                            kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
 
-                    # Annotate deployment for build traceability
-                    kubectl annotate deployment node-app build.jenkins.io/git-sha=${GIT_SHA} --overwrite
+                            # Annotate deployment for build traceability
+                            kubectl annotate deployment node-app build.jenkins.io/git-sha=${GIT_SHA} --overwrite
 
-                    # Restart pods to pick up new env vars
-                    kubectl rollout restart deployment/node-app
-                    kubectl rollout status deployment/node-app --timeout=2m
+                            # Restart pods to pick up new env vars
+                            kubectl rollout restart deployment/node-app
 
-                    # Verify env vars in first pod
-                    POD_NAME=\$(kubectl get pods -l app=node-app -o jsonpath='{.items[0].metadata.name}')
-                    echo "Verifying env vars in pod \$POD_NAME"
-                    kubectl exec \$POD_NAME -- printenv | grep GIT_SHA
-                    kubectl exec \$POD_NAME -- printenv | grep BUILD_TIME
-                """
+                            # Wait for rollout and check status
+                            kubectl rollout status deployment/node-app --timeout=2m
+                        """
+                    } catch (Exception e) {
+                        echo "Deployment failed! Attempting rollback..."
+                        sh """
+                            kubectl rollout undo deployment/node-app
+                            echo "Rollback executed. Current pods status:"
+                            kubectl get pods -l app=node-app
+                        """
+                        error "Kubernetes deployment failed and rollback executed."
+                    }
+
+                    // Verify env vars in first pod (after successful rollout)
+                    sh """
+                        POD_NAME=\$(kubectl get pods -l app=node-app -o jsonpath='{.items[0].metadata.name}')
+                        echo "Verifying env vars in pod \$POD_NAME"
+                        kubectl exec \$POD_NAME -- printenv | grep GIT_SHA
+                        kubectl exec \$POD_NAME -- printenv | grep BUILD_TIME
+                    """
+                }
             }
         }
 
@@ -148,10 +164,21 @@ pipeline {
                         git config user.name "Jenkins CI"
                         git config user.email "jenkins@example.com"
                         git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/Nisha123-rani/mynode-app.git
+
+                        # Ensure we're on main branch
                         git checkout -B main
-                        git pull --rebase origin main || true
+
+                        # Fetch remote changes and rebase to avoid conflicts
+                        git fetch origin main
+                        git rebase origin/main || true
+
+                        # Stage changes
                         git add .
+
+                        # Commit (allow empty commits)
                         git commit -m "CI: update from Jenkins build ${GIT_SHA}" --allow-empty
+
+                        # Push safely
                         git push origin main
                     """
                 }

@@ -126,7 +126,7 @@ pipeline {
                             # Annotate deployment
                             kubectl annotate deployment node-app build.jenkins.io/git-sha=${GIT_SHA} --overwrite
 
-                            # Restart pods
+                            # Restart pods and wait for rollout
                             kubectl rollout restart deployment/node-app
                             kubectl rollout status deployment/node-app --timeout=2m
                         """
@@ -139,21 +139,6 @@ pipeline {
                         """
                         error "Kubernetes deployment failed and rollback executed."
                     }
-
-                    // Verify env vars and health in all pods safely
-                    sh """
-                        for POD in \$(kubectl get pods -l app=node-app -o jsonpath='{.items[*].metadata.name}'); do
-                            PHASE=\$(kubectl get pod \$POD -o jsonpath='{.status.phase}')
-                            echo "Checking pod: \$POD (phase: \$PHASE)"
-                            if [ "\$PHASE" != "Running" ]; then
-                                echo "Skipping pod \$POD as it is not running."
-                                continue
-                            fi
-                            kubectl exec \$POD -- printenv | grep GIT_SHA || true
-                            kubectl exec \$POD -- printenv | grep BUILD_TIME || true
-                            kubectl exec \$POD -- wget -qO- http://localhost:3000/healthz || echo "Health check failed for \$POD"
-                        done
-                    """
                 }
             }
         }

@@ -8,27 +8,24 @@ import * as metrics from './metrics.js';
 const app = express();
 const logger = pino();
 
-// === Observability setup ===
+// === Environment variables ===
+const GIT_SHA = process.env.GIT_SHA || 'unknown';
+const BUILD_TIME = process.env.BUILD_TIME || 'unknown';
+
+// === Middleware ===
 app.use(pinoHttp({ logger }));
 app.use(helmet());
 app.use(express.json());
 app.use(metrics.middleware);
 
-// Log startup info (includes build metadata)
-const gitSha = process.env.GIT_SHA || 'unknown';
-const buildTime = process.env.BUILD_TIME || new Date().toISOString();
-logger.info(`🔹 Service starting with GIT_SHA=${gitSha}, BUILD_TIME=${buildTime}`);
+logger.info(`🚀 Starting service with GIT_SHA=${GIT_SHA}, BUILD_TIME=${BUILD_TIME}`);
 
 // === Health endpoint ===
-app.get('/healthz', (req, res) => {
-  // Read fresh values directly from env each time
-  const currentGitSha = process.env.GIT_SHA || 'unknown';
-  const currentBuildTime = process.env.BUILD_TIME || 'unknown';
-
+app.get('/healthz', async (req, res) => {
   res.json({
     status: 'ok',
-    commit: currentGitSha,
-    buildTime: currentBuildTime,
+    commit: GIT_SHA,         // ✅ use constant value
+    buildTime: BUILD_TIME,   // ✅ use constant value
   });
 });
 
@@ -41,7 +38,7 @@ app.get('/metrics', async (req, res) => {
     res.set('Content-Type', metrics.register.contentType);
     res.end(await metrics.register.metrics());
   } catch (err) {
-    logger.error('❌ Failed to get metrics', err);
+    logger.error('Failed to get metrics', err);
     res.status(500).end();
   }
 });

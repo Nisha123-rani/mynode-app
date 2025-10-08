@@ -112,18 +112,19 @@ pipeline {
                 sh """
                     echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                    # Update deployment image
+                    # Apply deployment.yaml (create or update deployment)
+                    kubectl apply -f k8s/deployment.yaml
+
+                    # Update container image
                     kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                    # Set env vars dynamically
-                    kubectl set env deployment/node-app \
-                        GIT_SHA=${GIT_SHA} \
-                        BUILD_TIME=${BUILD_TIME}
+                    # Set environment variables dynamically
+                    kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
 
-                    # Update deployment annotation for traceability
+                    # Annotate deployment for build traceability
                     kubectl annotate deployment node-app build.jenkins.io/git-sha=${GIT_SHA} --overwrite
 
-                    # Restart pods to apply new env
+                    # Restart pods to pick up new env vars
                     kubectl rollout restart deployment/node-app
                     kubectl rollout status deployment/node-app --timeout=2m
 

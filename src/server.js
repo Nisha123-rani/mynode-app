@@ -10,7 +10,7 @@ const logger = pino();
 
 // === Environment variables ===
 const GIT_SHA = process.env.GIT_SHA || 'unknown';
-const BUILD_TIME = process.env.BUILD_TIME || 'unknown';
+const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
 
 // === Middleware ===
 app.use(pinoHttp({ logger }));
@@ -18,14 +18,15 @@ app.use(helmet());
 app.use(express.json());
 app.use(metrics.middleware);
 
+// === Log startup info ===
 logger.info(`🚀 Starting service with GIT_SHA=${GIT_SHA}, BUILD_TIME=${BUILD_TIME}`);
 
 // === Health endpoint ===
-app.get('/healthz', async (req, res) => {
+app.get('/healthz', (req, res) => {
   res.json({
     status: 'ok',
-    commit: GIT_SHA,         // ✅ use constant value
-    buildTime: BUILD_TIME,   // ✅ use constant value
+    commit: GIT_SHA,
+    buildTime: BUILD_TIME
   });
 });
 

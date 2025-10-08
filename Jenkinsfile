@@ -87,7 +87,7 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh """
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
                         docker push ${DOCKER_IMAGE_SHA}
                         docker push ${DOCKER_IMAGE_LATEST}
 
@@ -97,10 +97,6 @@ pipeline {
                             -e GIT_SHA=${GIT_SHA} \
                             -e BUILD_TIME=${BUILD_TIME} \
                             ${DOCKER_IMAGE_LATEST}
-
-                        echo "Verifying running container env..."
-                        docker exec node-app printenv | grep GIT_SHA || true
-                        docker exec node-app printenv | grep BUILD_TIME || true
                     """
                 }
             }
@@ -114,22 +110,21 @@ pipeline {
                         sh """
                             echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                            # Apply or update the deployment
+                            # Apply or update deployment
                             kubectl apply -f k8s/deployment.yaml
 
-                            # Update container image and env vars
+                            # Update container image and env vars safely
                             kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
-                            kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
+                            kubectl set env deployment/node-app GIT_SHA=\${GIT_SHA} BUILD_TIME=\${BUILD_TIME}
 
-                            # Annotate to force fresh pod rollout (forces image pull)
-                            kubectl patch deployment node-app -p '{"spec": {"template": {"metadata": {"annotations": {"build.jenkins.io/force-redeploy": "'$(date +%s)'"}}}}}'
+                            # Annotate to force fresh pod rollout
+                            kubectl patch deployment node-app -p '{"spec": {"template": {"metadata": {"annotations": {"build.jenkins.io/force-redeploy": "'\$(date +%s)'"}}}}}'
 
                             # Wait for rollout to finish
                             kubectl rollout status deployment/node-app --timeout=2m
 
                             echo "Deployment successful!"
                         """
-
                     } catch (Exception e) {
                         echo "Deployment failed! Attempting rollback..."
                         sh """

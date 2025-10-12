@@ -4,9 +4,6 @@ metadata:
   name: node-app
   labels:
     app: node-app
-  annotations:
-    build.jenkins.io/git-sha: "placeholder"      # Jenkins will overwrite
-    build.jenkins.io/build-time: "placeholder"   # Jenkins will overwrite
 spec:
   replicas: 2
   selector:
@@ -16,9 +13,6 @@ spec:
     metadata:
       labels:
         app: node-app
-      annotations:
-        build.jenkins.io/git-sha: "placeholder"
-        build.jenkins.io/build-time: "placeholder"
     spec:
       containers:
         - name: node-app
@@ -32,13 +26,9 @@ spec:
             - name: PORT
               value: "3000"
             - name: GIT_SHA
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['build.jenkins.io/git-sha']
+              value: "{{GIT_SHA}}"
             - name: BUILD_TIME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['build.jenkins.io/build-time']
+              value: "{{BUILD_TIME}}"
           readinessProbe:
             httpGet:
               path: /healthz
@@ -68,5 +58,4 @@ spec:
     - protocol: TCP
       port: 3000
       targetPort: 3000
-      nodePort: 30080
 

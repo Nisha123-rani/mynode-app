@@ -110,17 +110,20 @@ pipeline {
                         sh """
                             echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                            # Apply deployment
+                            # Inject dynamic build info into deployment.yaml
+                            sed -i "s|{{GIT_SHA}}|${GIT_SHA}|" k8s/deployment.yaml
+                            sed -i "s|{{BUILD_TIME}}|${BUILD_TIME}|" k8s/deployment.yaml
+
+                            # Apply the updated manifest
                             kubectl apply -f k8s/deployment.yaml
 
-                            # Update image and environment variables
+                            # Update image
                             kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
-                            kubectl set env deployment/node-app GIT_SHA=${GIT_SHA} BUILD_TIME=${BUILD_TIME}
 
-                            # Annotate to force pod restart
+                            # Force pod restart by patching annotation
                             kubectl patch deployment node-app -p '{"spec": {"template": {"metadata": {"annotations": {"build.jenkins.io/force-redeploy": "'\$(date +%s)'"}}}}}'
 
-                            # Wait for rollout
+                            # Wait for rollout to finish
                             kubectl rollout status deployment/node-app --timeout=2m
 
                             echo "Deployment successful!"

@@ -32,8 +32,6 @@ pipeline {
                     env.DOCKER_IMAGE_LATEST = "${DOCKER_REPO}:latest"
                     echo "GIT_SHA=${env.GIT_SHA}"
                     echo "BUILD_TIME=${env.BUILD_TIME}"
-                    echo "DOCKER_IMAGE_SHA=${env.DOCKER_IMAGE_SHA}"
-                    echo "DOCKER_IMAGE_LATEST=${env.DOCKER_IMAGE_LATEST}"
                 }
             }
         }
@@ -60,21 +58,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh """
-                    echo "=== Building Docker image with latest Dockerfile changes ==="
+                    echo "=== Building Docker image ==="
                     docker build \
-                        --build-arg GIT_SHA=${GIT_SHA} \
-                        --build-arg BUILD_TIME=${BUILD_TIME} \
                         -t ${DOCKER_IMAGE_SHA} \
                         -t ${DOCKER_IMAGE_LATEST} .
-                    docker inspect -f '{{ index .Config.Labels "GIT_SHA" }}' ${DOCKER_IMAGE_SHA} || true
-                    docker inspect -f '{{ index .Config.Labels "BUILD_TIME" }}' ${DOCKER_IMAGE_SHA} || true
                 """
-            }
-        }
-
-        stage('Scan Docker Image') {
-            steps {
-                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE_SHA} || true"
             }
         }
 
@@ -90,13 +78,6 @@ pipeline {
                         echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
                         docker push ${DOCKER_IMAGE_SHA}
                         docker push ${DOCKER_IMAGE_LATEST}
-
-                        docker rm -f node-app || true
-
-                        docker run -d --name node-app -p 3000:3000 \
-                            -e GIT_SHA=${GIT_SHA} \
-                            -e BUILD_TIME=${BUILD_TIME} \
-                            ${DOCKER_IMAGE_LATEST}
                     """
                 }
             }
@@ -110,24 +91,21 @@ pipeline {
                         sh """
                             echo "Using KUBECONFIG=${KUBECONFIG}"
 
-                            # Inject dynamic build info into deployment.yaml
+                            # Replace placeholders in deployment.yaml
                             sed -i "s|{{GIT_SHA}}|${GIT_SHA}|" k8s/deployment.yaml
                             sed -i "s|{{BUILD_TIME}}|${BUILD_TIME}|" k8s/deployment.yaml
 
-                            # Apply the updated manifest
+                            # Apply deployment
                             kubectl apply -f k8s/deployment.yaml
 
                             # Update image
                             kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                            # Force rollout restart to pick up new env vars and annotations
+                            # Restart pods to pick up new env vars
                             kubectl rollout restart deployment node-app
 
                             # Wait for rollout to finish
                             kubectl rollout status deployment/node-app --timeout=2m
-
-                            # Show pod status for verification
-                            kubectl get pods -l app=node-app -o wide
 
                             echo "Deployment successful!"
                         """

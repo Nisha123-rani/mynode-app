@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Install dependencies for testing and production
+# Install dependencies
 RUN npm ci
 
 COPY . .
@@ -44,12 +44,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
 
 USER appuser
 
-# Build-time metadata (from Jenkins)
-ARG GIT_SHA
-ARG BUILD_TIME
-ENV GIT_SHA=${GIT_SHA}
-ENV BUILD_TIME=${BUILD_TIME}
-
+# Node environment
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
@@ -59,6 +54,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD /usr/bin/curl -fsS http://localhost:3000/healthz || exit 1
 
 EXPOSE 3000
-
-CMD ["node", "src/index.js"]
 

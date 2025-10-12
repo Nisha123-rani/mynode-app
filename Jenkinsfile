@@ -120,11 +120,14 @@ pipeline {
                             # Update image
                             kubectl set image deployment/node-app node-app=${DOCKER_IMAGE_LATEST}
 
-                            # Force pod restart by patching annotation
-                            kubectl patch deployment node-app -p '{"spec": {"template": {"metadata": {"annotations": {"build.jenkins.io/force-redeploy": "'\$(date +%s)'"}}}}}'
+                            # Force rollout restart to pick up new env vars and annotations
+                            kubectl rollout restart deployment node-app
 
                             # Wait for rollout to finish
                             kubectl rollout status deployment/node-app --timeout=2m
+
+                            # Show pod status for verification
+                            kubectl get pods -l app=node-app -o wide
 
                             echo "Deployment successful!"
                         """

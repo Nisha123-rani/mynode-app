@@ -26,9 +26,9 @@ spec:
             - name: PORT
               value: "3000"
             - name: GIT_SHA
-              value: "{{GIT_SHA}}"
+              value: "e350f07ed5cf69738dfe657b808258e24263cad5"
             - name: BUILD_TIME
-              value: "{{BUILD_TIME}}"
+              value: "2025-10-12T05:39:10Z"
           readinessProbe:
             httpGet:
               path: /healthz
